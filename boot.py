@@ -53,7 +53,7 @@ def start_kernel():
     try:
         initialize_environment_variables()
         initialize_constants()
-        test_backend_connection()
+        # test_backend_connection()
 
         db_conn = initialize_database_connection()
 

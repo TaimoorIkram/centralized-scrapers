@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from multiprocessing import Process, Pipe, Queue
 import random
 from threading import Event, Thread
@@ -8,11 +8,13 @@ from boot import start_kernel
 from utils import sys_msg
 from scripts import daraz
 from queue_monitor import monitor_queue
+from completion_monitor import monitor_completion
 
 class ScraperThread():
     def __init__(self, thread_name, thread_process) -> None:
         self.thread_name = thread_name
         self.is_joined = False
+        self.is_running = True
         self.thread_process = thread_process
 
     def join(self):
@@ -36,19 +38,12 @@ class Semaphore():
             return True
         else: return False
 
-def worker(conn):
-    event.wait(0.25)
-    semaphore.lock()
-    print('[%s] This is the first thread sending data to the other guy.' % __name__)
-    conn.send([42, None, string])
-    conn.close()
-    semaphore.unlock()
-
 try:
     t_start = time.time()
     if __name__ == '__main__':
         # globals
         event = Event()
+        completion_queue = Queue(maxsize=4)
         semaphore = Semaphore()
         string = 'lol'
 
@@ -64,6 +59,9 @@ try:
             scraper_deadlines[deadline[0]] = datetime.fromisoformat(deadline[1])
 
             # scraper thread pool to be joined
+            # this will cause the kernel to wait on closure 
+            # of all processes, which is fine and prevents
+            # the kernel from prefiring more scrapers
             processes[deadline[0]] = None
 
         while True:
@@ -81,6 +79,10 @@ try:
                 data_queue_monitor = Thread(target=monitor_queue, args=(data_queue, ), daemon=True)
                 data_queue_monitor.start()
 
+                # start the completion monitor thread
+                completion_queue_monitor = Thread(target=monitor_completion, args=(completion_queue, db_conn, ), daemon=True)
+                completion_queue_monitor.start()
+
                 if today > scraper_deadlines[key]: 
                     sys_msg("kernel", "System detected '%s' scraper to have reached its deadline." % key)
 
@@ -89,18 +91,17 @@ try:
                         sys_msg("kernel", "The process '%s' scraper is still running." % key)
                     else:
                         parent_conn, child_conn = Pipe()
-                        p = Process(target=daraz.run, args=(semaphore, data_queue, random.randint(1, 5)))
+                        p = Process(target=daraz.run, args=(semaphore, data_queue, completion_queue, random.randint(20, 25), ))
                         p.start()
 
                         thread_process = ScraperThread(key, p)
                         processes[key] = thread_process
 
                 else:
-                    print('GOOD TO GO')
+                    sys_msg("kernel", "The scraper for market '%s' has not reached deadline yet." % key)
                     pass
-
-                # optional wait of one day to check expiration again?
-                
+            
+            # joining threads to wait on their completion
             for process in processes.keys():
                 if processes[process] and processes[process].is_joined == False:
                     processes[process].join()

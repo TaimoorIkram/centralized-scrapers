@@ -8,6 +8,10 @@ def monitor_queue(queue: Queue):
     for changes in the queue. This runs in parallel with
     the kernel to monitor the changes in the system data
     queue.
+
+    When the queue is changed, it is the task of this
+    function which runs as a daemon thread to upload the
+    results back to the server.
     """
 
 
